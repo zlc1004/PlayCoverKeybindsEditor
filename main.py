@@ -1,11 +1,15 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from tkinter import ttk
 from PIL import Image, ImageTk
 import os
 import plistlib
 import json
 
+CodeToKeys = {-4: 'cA', -5: 'cX', -6: 'cB', -7: 'cY', -8: 'dU', -9: 'dD', -10: 'Controller', -11: 'dL', -12: 'L1', -13: 'L2', -14: 'R1', -15: 'R2', -1: 'LMB', -2: 'RMB', -3: 'MMB', 41: 'Escape', 44: 'space', 225: 'Shift_L', 57: 'Caps_Lock', 43: 'Tab', 227: 'Super_L', 226: 'Alt_L', 231: 'Super_R', 230: 'Alt_R', 40: 'Return', 42: 'BackSpace', 229: 'Shift_R', 80: 'Left', 79: 'Right', 82: 'Up', 81: 'Down', 58: 'F1', 59: 'F2', 60: 'F3', 61: 'F4', 62: 'F5', 63: 'F6', 64: 'F7', 65: 'F8', 66: 'F9', 67: 'F10', 68: 'F11', 69: 'F12', 100: 'section', 30: '1', 31: '2', 32: '3', 33: '4', 34: '5', 35: '6', 36: '7', 37: '8', 38: '9', 39: '0', 45: 'minus', 46: 'equal', 20: 'q', 26: 'w', 8: 'e', 21: 'r', 23: 't', 28: 'y', 24: 'u', 12: 'i', 18: 'o', 19: 'p', 47: 'bracketleft', 48: 'bracketright', 4: 'a', 22: 's', 7: 'd', 9: 'f', 10: 'g', 11: 'h', 13: 'j', 14: 'k', 15: 'l', 51: 'semicolon', 52: 'apostrophe', 49: 'backslash', 29: 'z', 53: 'grave', 27: 'x', 6: 'c', 25: 'v', 5: 'b', 17: 'n', 16: 'm', 54: 'comma', 55: 'period', 56: 'slash'}
+
+KeyToCode = {v: k for k, v in CodeToKeys.items()}
+
+KeyNameDifferences = {'Escape': 'Esc', 'space': 'Spc', 'Shift_L': 'Lshft', 'Caps_Lock': 'Caps', 'Super_L': 'LCmd', 'Alt_L': 'LOpt', 'Super_R': 'RCmd', 'Alt_R': 'ROpt', 'Return': 'Enter', 'BackSpace': 'Del', 'Shift_R': 'Rshft', 'section': '§', 'minus': '-', 'equal': '=', 'q': 'Q', 'w': 'W', 'e': 'E', 'r': 'R', 't': 'T', 'y': 'Y', 'u': 'U', 'i': 'I', 'o': 'O', 'p': 'P', 'bracketleft': '[', 'bracketright': ']', 'a': 'A', 's': 'S', 'd': 'D', 'f': 'F', 'g': 'G', 'h': 'H', 'j': 'J', 'k': 'K', 'l': 'L', 'semicolon': ';', 'apostrophe': "'", 'backslash': '\\', 'z': 'Z', 'grave': '`', 'x': 'X', 'c': 'C', 'v': 'V', 'b': 'B', 'n': 'N', 'm': 'M', 'comma': ',', 'period': '.', 'slash': '/'}
 class ImageViewer:
     def __init__(self, root):
         self.root = root
@@ -17,13 +21,34 @@ class ImageViewer:
         self.plist_data = None
         self.canvas_width = 0
         self.canvas_height = 0
+        self.dragging_item = None
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.button_circles = {}  # Store circle IDs and their corresponding button data
+        self.save_window = None  # Store reference to save window
         
         # Make window unresizable
         self.root.resizable(False, False)
         
+        # Bind close event to exit program
+        self.root.protocol("WM_DELETE_WINDOW", self.on_main_window_close)
+        
         # Create canvas to display image
         self.canvas = tk.Canvas(root, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Bind mouse events for dragging
+        self.canvas.bind("<Button-1>", self.on_click)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+    
+    def on_main_window_close(self):
+        """Handle main window close event"""
+        self.root.quit()
+        
+    def on_save_window_close(self):
+        """Handle save window close event"""
+        self.root.quit()
         
     def load_image(self, filename):
         """Load and display the image, scaling down if larger than screen"""
@@ -95,7 +120,12 @@ class ImageViewer:
         if not isinstance(button_models, list):
             return
         
-        for button in button_models:
+        # Clear existing button circles and text, but preserve the background image
+        self.canvas.delete('button_circle')
+        self.canvas.delete('button_text')
+        self.button_circles = {}  # Clear existing mappings
+        
+        for i, button in enumerate(button_models):
             if not isinstance(button, dict) or 'transform' not in button:
                 continue
             
@@ -121,7 +151,7 @@ class ImageViewer:
             y2 = center_y + radius
             
             # Draw circle (outline only for visibility)
-            self.canvas.create_oval(
+            circle_id = self.canvas.create_oval(
                 x1, y1, x2, y2,
                 outline='red',
                 width=2,
@@ -129,15 +159,319 @@ class ImageViewer:
                 tags='button_circle'
             )
             
-            # Optionally draw key name if available
+            # Draw key name if available - use original keyName from the file
             key_name = button.get('keyName', '')
+            
+            text_id = None
             if key_name:
-                self.canvas.create_text(
+                text_id = self.canvas.create_text(
                     center_x, center_y,
                     text=key_name,
                     fill='red',
                     font=('Arial', 10, 'bold'),
                     tags='button_text'
+                )
+            
+            # Store the mapping between circle ID and button data
+            self.button_circles[circle_id] = {
+                'button_index': i,
+                'text_id': text_id,
+                'button_data': button
+            }
+    
+    def on_click(self, event):
+        """Handle mouse click events"""
+        # Find the closest item to the click
+        item = self.canvas.find_closest(event.x, event.y)[0]
+        
+        # Get tags safely
+        tags = self.canvas.gettags(item)
+        
+        # Check if it's a button circle or text
+        if item in self.button_circles or (tags and tags[0] in ['button_circle', 'button_text']):
+            # If it's text, find the corresponding circle
+            if tags and tags[0] == 'button_text':
+                # Find the circle that corresponds to this text
+                for circle_id, data in self.button_circles.items():
+                    if data['text_id'] == item:
+                        item = circle_id
+                        break
+            
+            if item in self.button_circles:
+                self.dragging_item = item
+                self.drag_start_x = event.x
+                self.drag_start_y = event.y
+    
+    def on_drag(self, event):
+        """Handle mouse drag events"""
+        if self.dragging_item:
+            # Calculate the offset
+            dx = event.x - self.drag_start_x
+            dy = event.y - self.drag_start_y
+            
+            # Move the circle
+            self.canvas.move(self.dragging_item, dx, dy)
+            
+            # Move the corresponding text if it exists
+            circle_data = self.button_circles[self.dragging_item]
+            if circle_data['text_id']:
+                self.canvas.move(circle_data['text_id'], dx, dy)
+            
+            # Update the drag start position
+            self.drag_start_x = event.x
+            self.drag_start_y = event.y
+    
+    def on_release(self, event):
+        """Handle mouse release events"""
+        if self.dragging_item:
+            # Update the button data with new coordinates
+            circle_data = self.button_circles[self.dragging_item]
+            
+            # Get the current position of the circle
+            coords = self.canvas.coords(self.dragging_item)
+            center_x = (coords[0] + coords[2]) / 2
+            center_y = (coords[1] + coords[3]) / 2
+            
+            # Convert back to normalized coordinates
+            new_x_coord = center_x / self.canvas_width
+            new_y_coord = center_y / self.canvas_height
+            
+            # Update the button data
+            button_index = circle_data['button_index']
+            self.plist_data['buttonModels'][button_index]['transform']['xCoord'] = new_x_coord
+            self.plist_data['buttonModels'][button_index]['transform']['yCoord'] = new_y_coord
+            
+            self.dragging_item = None
+    
+    def create_save_window(self, filename):
+        """Create a simple save window with save and add button"""
+        # Create a new window for the controls
+        self.save_window = tk.Toplevel(self.root)
+        self.save_window.title("Controls")
+        self.save_window.geometry("150x150")
+        self.save_window.resizable(False, False)
+        
+        # Bind close event to exit program
+        self.save_window.protocol("WM_DELETE_WINDOW", self.on_save_window_close)
+        
+        # Create a frame for the content
+        content_frame = tk.Frame(self.save_window)
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        # Add "Add Button" button
+        add_button = tk.Button(
+            content_frame,
+            text="Add Button",
+            font=('Arial', 10, 'bold'),
+            bg='#2196F3',
+            fg='white',
+            padx=20,
+            pady=8,
+            command=self.add_new_button
+        )
+        add_button.pack(pady=(0, 10))
+        
+        # Add save button
+        save_button = tk.Button(
+            content_frame,
+            text="Save",
+            font=('Arial', 12, 'bold'),
+            bg='#4CAF50',
+            fg='white',
+            padx=30,
+            pady=10,
+            command=lambda: self.save_data(filename)
+        )
+        save_button.pack()
+        
+        # Update window title
+        filename_only = os.path.basename(filename)
+        file_ext = os.path.splitext(filename)[1].lower()
+        if file_ext == '.playmap':
+            self.save_window.title(f"Controls - {filename_only}")
+        elif file_ext == '.plist':
+            self.save_window.title(f"Controls - {filename_only}")
+        else:
+            self.save_window.title(f"Controls - {filename_only}")
+    
+    def add_new_button(self):
+        """Add a new button circle to the canvas"""
+        # Create key capture dialog
+        key_dialog = tk.Toplevel(self.root)
+        key_dialog.title("Press a Key")
+        key_dialog.geometry("300x150")
+        key_dialog.resizable(False, False)
+        key_dialog.focus_set()
+        key_dialog.grab_set()  # Make it modal
+        
+        # Center the dialog
+        key_dialog.transient(self.root)
+        
+        # Variables to store the captured key
+        self.captured_key = None
+        self.captured_key_code = None
+        
+        # Create content frame
+        dialog_frame = tk.Frame(key_dialog)
+        dialog_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Instruction label
+        instruction_label = tk.Label(
+            dialog_frame,
+            text="Press any key to assign to the new button",
+            font=('Arial', 11),
+            wraplength=250
+        )
+        instruction_label.pack(pady=(0, 10))
+        
+        # Display label for captured key
+        self.key_display_label = tk.Label(
+            dialog_frame,
+            text="Waiting for key press...",
+            font=('Arial', 10, 'bold'),
+            fg='blue'
+        )
+        self.key_display_label.pack(pady=(0, 10))
+        
+        # Buttons frame
+        button_frame = tk.Frame(dialog_frame)
+        button_frame.pack()
+        
+        # OK button (initially disabled)
+        self.ok_button = tk.Button(
+            button_frame,
+            text="OK",
+            font=('Arial', 10),
+            padx=20,
+            pady=5,
+            state='disabled',
+            command=lambda: self.create_new_button_circle(key_dialog)
+        )
+        self.ok_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Cancel button
+        cancel_button = tk.Button(
+            button_frame,
+            text="Cancel",
+            font=('Arial', 10),
+            padx=20,
+            pady=5,
+            command=key_dialog.destroy
+        )
+        cancel_button.pack(side=tk.LEFT)
+        
+        # Bind key events
+        key_dialog.bind('<KeyPress>', self.on_key_capture)
+        key_dialog.focus_set()
+    
+    def on_key_capture(self, event):
+        """Capture the pressed key"""
+        self.captured_key = event.keysym
+
+        # Convert to PlayCover keycode using our mapping
+        key_name = self.captured_key
+        self.captured_key_code = KeyToCode.get(key_name, event.keycode)
+        
+        # Update display
+        self.key_display_label.config(
+            text=f"Captured: {key_name} (Code: {self.captured_key_code})",
+            fg='green'
+        )
+        
+        # Enable OK button
+        self.ok_button.config(state='normal')
+    
+    def create_new_button_circle(self, dialog):
+        """Create a new button circle with the captured key"""
+        if not self.captured_key or self.captured_key_code is None:
+            return
+        
+        # Convert keysym to original PlayCover key name using KeyNameDiffrences
+        if self.captured_key in KeyNameDifferences:
+            key_name = KeyNameDifferences[self.captured_key]
+        else:
+            # Fallback to captured key name
+            key_name = self.captured_key.upper() if len(self.captured_key) == 1 else self.captured_key
+        
+        # Create new button data with PlayCover-compatible keycode
+        new_button = {
+            "keyCode": self.captured_key_code,
+            "keyName": key_name,
+            "transform": {
+                "size": 5.0,
+                "xCoord": 0.5,
+                "yCoord": 0.5
+            }
+        }
+        
+        # Add to buttonModels
+        if 'buttonModels' not in self.plist_data:
+            self.plist_data['buttonModels'] = []
+        
+        self.plist_data['buttonModels'].append(new_button)
+        
+        # Redraw all circles to include the new one
+        self.draw_button_models()
+        
+        # Close dialog
+        dialog.destroy()
+        
+        # Show success message
+        # messagebox.showinfo(
+        #     "Button Added",
+        #     f"New button '{new_button['keyName']}' (Code: {new_button['keyCode']}) added at center.\nYou can drag it to the desired position."
+        # )
+    
+    def save_data(self, original_filename):
+        """Save the updated data to a file"""
+        # Get the file extension to determine save format
+        file_ext = os.path.splitext(original_filename)[1].lower()
+        
+        # Set up file dialog based on original file type
+        if file_ext in ['.plist', '.playmap']:
+            file_types = [
+                ('Plist files', '*.plist'),
+                ('Playmap files', '*.playmap'),
+                ('All files', '*.*')
+            ]
+            default_ext = file_ext
+        else:
+            file_types = [
+                ('JSON files', '*.json'),
+                ('All files', '*.*')
+            ]
+            default_ext = '.json'
+        
+        # Show save dialog
+        save_filename = filedialog.asksaveasfilename(
+            title="Save updated button positions",
+            defaultextension=default_ext,
+            filetypes=file_types,
+            initialfile=os.path.basename(original_filename)
+        )
+        
+        if save_filename:
+            try:
+                save_ext = os.path.splitext(save_filename)[1].lower()
+                
+                if save_ext in ['.plist', '.playmap']:
+                    # Save as plist
+                    with open(save_filename, 'wb') as plist_file:
+                        plistlib.dump(self.plist_data, plist_file)
+                else:
+                    # Save as JSON
+                    with open(save_filename, 'w', encoding='utf-8') as json_file:
+                        json.dump(self.plist_data, json_file, indent=2, default=str)
+                
+                messagebox.showinfo(
+                    "Success",
+                    f"File saved successfully to:\n{save_filename}"
+                )
+                
+            except Exception as e:
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to save file:\n{str(e)}"
                 )
     
     def load_plist(self, filename):
@@ -146,44 +480,8 @@ class ImageViewer:
             with open(filename, 'rb') as plist_file:
                 self.plist_data = plistlib.load(plist_file)
             
-            # Create a new window for displaying the plist content
-            data_window = tk.Toplevel(self.root)
-            data_window.title("Data Viewer")
-            data_window.geometry("800x600")
-            data_window.resizable(True, True)
-            
-            # Create a frame for the text widget and scrollbar
-            text_frame = tk.Frame(data_window)
-            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            
-            # Create text widget with scrollbar
-            text_widget = tk.Text(
-                text_frame, 
-                wrap=tk.WORD, 
-                font=('Consolas', 12),
-                bg='white',
-                fg='black'
-            )
-            
-            scrollbar = tk.Scrollbar(text_frame)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            
-            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            text_widget.config(yscrollcommand=scrollbar.set)
-            scrollbar.config(command=text_widget.yview)
-            
-            # Format and display the plist data as JSON for better readability
-            formatted_content = json.dumps(self.plist_data, indent=2, default=str)
-            text_widget.insert(tk.END, formatted_content)
-            text_widget.config(state=tk.DISABLED)  # Make it read-only
-            
-            # Update window title
-            filename_only = os.path.basename(filename)
-            file_ext = os.path.splitext(filename)[1].lower()
-            if file_ext == '.playmap':
-                data_window.title(f"Playmap Viewer - {filename_only}")
-            else:
-                data_window.title(f"Plist Viewer - {filename_only}")
+            # Create save window instead of data viewer
+            self.create_save_window(filename)
             
             return self.plist_data
             
@@ -196,40 +494,8 @@ class ImageViewer:
             with open(filename, 'r', encoding='utf-8') as json_file:
                 self.plist_data = json.load(json_file)
             
-            # Create a new window for displaying the JSON content
-            data_window = tk.Toplevel(self.root)
-            data_window.title("Data Viewer")
-            data_window.geometry("800x600")
-            data_window.resizable(True, True)
-            
-            # Create a frame for the text widget and scrollbar
-            text_frame = tk.Frame(data_window)
-            text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            
-            # Create text widget with scrollbar
-            text_widget = tk.Text(
-                text_frame, 
-                wrap=tk.WORD, 
-                font=('Consolas', 12),
-                bg='white',
-                fg='black'
-            )
-            
-            scrollbar = tk.Scrollbar(text_frame)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            
-            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            text_widget.config(yscrollcommand=scrollbar.set)
-            scrollbar.config(command=text_widget.yview)
-            
-            # Format and display the JSON data with proper indentation
-            formatted_content = json.dumps(self.plist_data, indent=2, default=str)
-            text_widget.insert(tk.END, formatted_content)
-            text_widget.config(state=tk.DISABLED)  # Make it read-only
-            
-            # Update window title
-            filename_only = os.path.basename(filename)
-            data_window.title(f"JSON Viewer - {filename_only}")
+            # Create save window instead of data viewer
+            self.create_save_window(filename)
             
             return self.plist_data
             
