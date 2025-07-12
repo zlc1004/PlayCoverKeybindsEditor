@@ -168,7 +168,7 @@ class ImageViewer:
                     center_x, center_y,
                     text=key_name,
                     fill='red',
-                    font=('Arial', 10, 'bold'),
+                    font=('Arial', 14, 'bold'),
                     tags='button_text'
                 )
             
