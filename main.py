@@ -41,6 +41,7 @@ class ImageViewer:
         self.canvas.bind("<Button-1>", self.on_click)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.canvas.bind("<Double-Button-1>", self.on_double_click)
     
     def on_main_window_close(self):
         """Handle main window close event"""
@@ -501,6 +502,365 @@ class ImageViewer:
             
         except Exception as e:
             raise Exception(f"Failed to parse JSON file: {str(e)}")
+
+    def on_double_click(self, event):
+        """Handle double-click events to open button edit popup"""
+        # Find the closest item to the click
+        item = self.canvas.find_closest(event.x, event.y)[0]
+        
+        # Get tags safely
+        tags = self.canvas.gettags(item)
+        
+        # Check if it's a button circle or text
+        if item in self.button_circles or (tags and tags[0] in ['button_circle', 'button_text']):
+            # If it's text, find the corresponding circle
+            if tags and tags[0] == 'button_text':
+                # Find the circle that corresponds to this text
+                for circle_id, data in self.button_circles.items():
+                    if data['text_id'] == item:
+                        item = circle_id
+                        break
+            
+            if item in self.button_circles:
+                self.open_button_edit_popup(item)
+    
+    def open_button_edit_popup(self, circle_id):
+        """Open a popup with options to edit the button"""
+        circle_data = self.button_circles[circle_id]
+        button_index = circle_data['button_index']
+        button_data = circle_data['button_data']
+        
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Edit Button")
+        popup.geometry("300x200")
+        popup.resizable(False, False)
+        popup.grab_set()  # Make it modal
+        popup.transient(self.root)
+        
+        # Center the popup
+        popup.focus_set()
+        
+        # Create main frame
+        main_frame = tk.Frame(popup)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Current button info
+        info_label = tk.Label(
+            main_frame,
+            text=f"Editing: {button_data.get('keyName', 'Unknown')}",
+            font=('Arial', 12, 'bold'),
+            fg='blue'
+        )
+        info_label.pack(pady=(0, 15))
+        
+        # Button 1: Manual Key Name
+        manual_key_button = tk.Button(
+            main_frame,
+            text="Manual Key Name",
+            font=('Arial', 10, 'bold'),
+            bg='#FF9800',
+            fg='white',
+            padx=20,
+            pady=8,
+            command=lambda: self.manual_key_name(popup, circle_id)
+        )
+        manual_key_button.pack(pady=3, fill=tk.X)
+        
+        # Button 2: Capture Key
+        capture_key_button = tk.Button(
+            main_frame,
+            text="Capture Key",
+            font=('Arial', 10, 'bold'),
+            bg='#2196F3',
+            fg='white',
+            padx=20,
+            pady=8,
+            command=lambda: self.capture_key_for_button(popup, circle_id)
+        )
+        capture_key_button.pack(pady=3, fill=tk.X)
+        
+        # Button 3: Change Size
+        change_size_button = tk.Button(
+            main_frame,
+            text="Change Size",
+            font=('Arial', 10, 'bold'),
+            bg='#9C27B0',
+            fg='white',
+            padx=20,
+            pady=8,
+            command=lambda: self.change_button_size(popup, circle_id)
+        )
+        change_size_button.pack(pady=3, fill=tk.X)
+        
+        # Close button
+        close_button = tk.Button(
+            main_frame,
+            text="Close",
+            font=('Arial', 10),
+            bg='#666666',
+            fg='white',
+            padx=20,
+            pady=5,
+            command=popup.destroy
+        )
+        close_button.pack(pady=(15, 0))
+    
+    def manual_key_name(self, parent_popup, circle_id):
+        """Open dialog to manually enter key name"""
+        parent_popup.destroy()
+        
+        circle_data = self.button_circles[circle_id]
+        button_index = circle_data['button_index']
+        current_key_name = circle_data['button_data'].get('keyName', '')
+        
+        # Create input dialog
+        input_dialog = tk.Toplevel(self.root)
+        input_dialog.title("Manual Key Name")
+        input_dialog.geometry("300x150")
+        input_dialog.resizable(False, False)
+        input_dialog.grab_set()
+        input_dialog.transient(self.root)
+        input_dialog.focus_set()
+        
+        # Create frame
+        dialog_frame = tk.Frame(input_dialog)
+        dialog_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Instruction label
+        instruction_label = tk.Label(
+            dialog_frame,
+            text="Enter the key name:",
+            font=('Arial', 11)
+        )
+        instruction_label.pack(pady=(0, 10))
+        
+        # Entry field
+        key_entry = tk.Entry(
+            dialog_frame,
+            font=('Arial', 12),
+            width=20
+        )
+        key_entry.pack(pady=(0, 15))
+        key_entry.insert(0, current_key_name)
+        key_entry.select_range(0, tk.END)
+        key_entry.focus_set()
+        
+        # Buttons frame
+        button_frame = tk.Frame(dialog_frame)
+        button_frame.pack()
+        
+        def save_manual_key():
+            new_key_name = key_entry.get().strip()
+            if new_key_name:
+                # Update the button data
+                self.plist_data['buttonModels'][button_index]['keyName'] = new_key_name
+                # Redraw to show the change
+                self.draw_button_models()
+                input_dialog.destroy()
+        
+        # Save button
+        save_button = tk.Button(
+            button_frame,
+            text="Save",
+            font=('Arial', 10),
+            bg='#4CAF50',
+            fg='white',
+            padx=20,
+            pady=5,
+            command=save_manual_key
+        )
+        save_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Cancel button
+        cancel_button = tk.Button(
+            button_frame,
+            text="Cancel",
+            font=('Arial', 10),
+            padx=20,
+            pady=5,
+            command=input_dialog.destroy
+        )
+        cancel_button.pack(side=tk.LEFT)
+        
+        # Bind Enter key to save
+        key_entry.bind('<Return>', lambda e: save_manual_key())
+    
+    def capture_key_for_button(self, parent_popup, circle_id):
+        """Open dialog to capture a new key for existing button"""
+        parent_popup.destroy()
+        
+        circle_data = self.button_circles[circle_id]
+        button_index = circle_data['button_index']
+        
+        # Create key capture dialog (similar to add_new_button but for editing)
+        key_dialog = tk.Toplevel(self.root)
+        key_dialog.title("Capture New Key")
+        key_dialog.geometry("300x150")
+        key_dialog.resizable(False, False)
+        key_dialog.focus_set()
+        key_dialog.grab_set()
+        key_dialog.transient(self.root)
+        
+        # Variables to store the captured key
+        self.captured_key = None
+        self.captured_key_code = None
+        
+        # Create content frame
+        dialog_frame = tk.Frame(key_dialog)
+        dialog_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Instruction label
+        instruction_label = tk.Label(
+            dialog_frame,
+            text="Press any key to assign to this button",
+            font=('Arial', 11),
+            wraplength=250
+        )
+        instruction_label.pack(pady=(0, 10))
+        
+        # Display label for captured key
+        self.key_display_label = tk.Label(
+            dialog_frame,
+            text="Waiting for key press...",
+            font=('Arial', 10, 'bold'),
+            fg='blue'
+        )
+        self.key_display_label.pack(pady=(0, 10))
+        
+        # Buttons frame
+        button_frame = tk.Frame(dialog_frame)
+        button_frame.pack()
+        
+        def update_button_key():
+            if self.captured_key and self.captured_key_code is not None:
+                # Convert keysym to PlayCover key name
+                if self.captured_key in KeyNameDifferences:
+                    key_name = KeyNameDifferences[self.captured_key]
+                else:
+                    key_name = self.captured_key.upper() if len(self.captured_key) == 1 else self.captured_key
+                
+                # Update the button data
+                self.plist_data['buttonModels'][button_index]['keyCode'] = self.captured_key_code
+                self.plist_data['buttonModels'][button_index]['keyName'] = key_name
+                
+                # Redraw to show the change
+                self.draw_button_models()
+                key_dialog.destroy()
+        
+        # OK button (initially disabled)
+        self.ok_button = tk.Button(
+            button_frame,
+            text="OK",
+            font=('Arial', 10),
+            bg='#4CAF50',
+            fg='white',
+            padx=20,
+            pady=5,
+            state='disabled',
+            command=update_button_key
+        )
+        self.ok_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Cancel button
+        cancel_button = tk.Button(
+            button_frame,
+            text="Cancel",
+            font=('Arial', 10),
+            padx=20,
+            pady=5,
+            command=key_dialog.destroy
+        )
+        cancel_button.pack(side=tk.LEFT)
+        
+        # Bind key events
+        key_dialog.bind('<KeyPress>', self.on_key_capture)
+        key_dialog.focus_set()
+    
+    def change_button_size(self, parent_popup, circle_id):
+        """Open dialog to change button size"""
+        parent_popup.destroy()
+        
+        circle_data = self.button_circles[circle_id]
+        button_index = circle_data['button_index']
+        current_size = circle_data['button_data']['transform'].get('size', 5.0)
+        
+        # Create size input dialog
+        size_dialog = tk.Toplevel(self.root)
+        size_dialog.title("Change Button Size")
+        size_dialog.geometry("300x150")
+        size_dialog.resizable(False, False)
+        size_dialog.grab_set()
+        size_dialog.transient(self.root)
+        size_dialog.focus_set()
+        
+        # Create frame
+        dialog_frame = tk.Frame(size_dialog)
+        dialog_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Instruction label
+        instruction_label = tk.Label(
+            dialog_frame,
+            text="Enter button size (1-20):",
+            font=('Arial', 11)
+        )
+        instruction_label.pack(pady=(0, 10))
+        
+        # Entry field
+        size_entry = tk.Entry(
+            dialog_frame,
+            font=('Arial', 12),
+            width=10
+        )
+        size_entry.pack(pady=(0, 15))
+        size_entry.insert(0, str(current_size))
+        size_entry.select_range(0, tk.END)
+        size_entry.focus_set()
+        
+        # Buttons frame
+        button_frame = tk.Frame(dialog_frame)
+        button_frame.pack()
+        
+        def save_size():
+            try:
+                new_size = float(size_entry.get().strip())
+                if 1 <= new_size <= 20:
+                    # Update the button data
+                    self.plist_data['buttonModels'][button_index]['transform']['size'] = new_size
+                    # Redraw to show the change
+                    self.draw_button_models()
+                    size_dialog.destroy()
+                else:
+                    messagebox.showwarning("Invalid Size", "Size must be between 1 and 20")
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Please enter a valid number")
+        
+        # Save button
+        save_button = tk.Button(
+            button_frame,
+            text="Save",
+            font=('Arial', 10),
+            bg='#4CAF50',
+            fg='white',
+            padx=20,
+            pady=5,
+            command=save_size
+        )
+        save_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Cancel button
+        cancel_button = tk.Button(
+            button_frame,
+            text="Cancel",
+            font=('Arial', 10),
+            padx=20,
+            pady=5,
+            command=size_dialog.destroy
+        )
+        cancel_button.pack(side=tk.LEFT)
+        
+        # Bind Enter key to save
+        size_entry.bind('<Return>', lambda e: save_size())
 
 def main():
     root = tk.Tk()
