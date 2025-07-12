@@ -1,4 +1,4 @@
-name: /Users/lucaszhang/PlayCoverKeybindsEditor/.conda
+name: PlayCoverKeybindsEditor
 channels:
   - conda-forge
 dependencies:
@@ -20,4 +20,3 @@ dependencies:
   - wheel=0.45.1=pyhd8ed1ab_1
   - pip:
       - pillow==11.3.0
-prefix: /Users/lucaszhang/PlayCoverKeybindsEditor/.conda

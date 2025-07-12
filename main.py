@@ -575,8 +575,8 @@ class ImageViewer:
         # Set up file dialog based on original file type
         if file_ext in [".plist", ".playmap"]:
             file_types = [
-                ("Plist files", "*.plist"),
                 ("Playmap files", "*.playmap"),
+                ("Plist files", "*.plist"),
                 ("All files", "*.*"),
             ]
             default_ext = file_ext
@@ -1070,9 +1070,6 @@ def main():
         # Draw button models on the image canvas
         app.draw_button_models()
 
-        # Print the loaded data to console for programmatic access
-        print("Loaded data:")
-        print(json.dumps(data, indent=2, default=str))
 
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load files:\n{str(e)}")
