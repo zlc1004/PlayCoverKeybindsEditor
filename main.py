@@ -686,7 +686,7 @@ class ImageViewer:
 
             # Create save window instead of data viewer
             self.create_save_window(filename)
-
+            self.plist_name = filename
             return self.plist_data
 
         except Exception as e:
@@ -1116,10 +1116,18 @@ def main():
     # Enable drag-and-drop on the main window
     def on_drop(event):
         dropped_file = event.data.strip("{}")  # Remove curly braces if present
+        # Close the old controls window if it exists
+        if hasattr(app, 'save_window') and app.save_window is not None:
+            try:
+                app.save_window.destroy()
+            except Exception:
+                pass
+            app.save_window = None
         if is_image_file(dropped_file):
             try:
                 app.load_image(dropped_file)
                 app.draw_button_models()
+                app.create_save_window(app.plist_name)
                 messagebox.showinfo("Image Loaded", f"Loaded image: {os.path.basename(dropped_file)}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load image:\n{str(e)}")
