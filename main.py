@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image, ImageTk
 import os
 import plistlib
@@ -152,6 +153,18 @@ KeyNameDifferences = {
     "period": ".",
     "slash": "/",
 }
+
+
+def is_image_file(filename):
+    ext = os.path.splitext(filename)[1].lower()
+    return ext in [
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif"
+    ]
+
+
+def is_plist_file(filename):
+    ext = os.path.splitext(filename)[1].lower()
+    return ext in [".plist", ".playmap"]
 
 
 class ImageViewer:
@@ -1054,7 +1067,8 @@ class ImageViewer:
 
 
 def main():
-    root = tk.Tk()
+    # Use TkinterDnD for drag-and-drop support
+    root = TkinterDnD.Tk()
     app = ImageViewer(root)
 
     # Hide the window initially
@@ -1099,6 +1113,29 @@ def main():
         root.quit()
         return
 
+    # Enable drag-and-drop on the main window
+    def on_drop(event):
+        dropped_file = event.data.strip("{}")  # Remove curly braces if present
+        if is_image_file(dropped_file):
+            try:
+                app.load_image(dropped_file)
+                app.draw_button_models()
+                messagebox.showinfo("Image Loaded", f"Loaded image: {os.path.basename(dropped_file)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load image:\n{str(e)}")
+        elif is_plist_file(dropped_file):
+            try:
+                app.load_plist(dropped_file)
+                app.draw_button_models()
+                messagebox.showinfo("Plist Loaded", f"Loaded plist/playmap: {os.path.basename(dropped_file)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load plist/playmap:\n{str(e)}")
+        else:
+            messagebox.showwarning("Unsupported File", "File type not supported for drag-and-drop.")
+
+    root.drop_target_register(DND_FILES)
+    root.dnd_bind('<<Drop>>', on_drop)
+
     # Show the window and load both files
     root.deiconify()
 
@@ -1122,7 +1159,6 @@ def main():
 
         # Draw button models on the image canvas
         app.draw_button_models()
-
 
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load files:\n{str(e)}")
