@@ -394,7 +394,7 @@ class ImageViewer:
         # Create a new window for the controls
         self.save_window = tk.Toplevel(self.root)
         self.save_window.title("Controls")
-        self.save_window.geometry("150x150")
+        self.save_window.geometry("150x200")
         self.save_window.resizable(False, False)
 
         # Bind close event to exit program
@@ -403,6 +403,19 @@ class ImageViewer:
         # Create a frame for the content
         content_frame = tk.Frame(self.save_window)
         content_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        # Add "Change Image" button
+        change_image_button = tk.Button(
+            content_frame,
+            text="Change Image",
+            font=("Arial", 10, "bold"),
+            bg="#FF9800",
+            fg="white",
+            padx=20,
+            pady=8,
+            command=self.change_image,
+        )
+        change_image_button.pack(pady=(0, 10))
 
         # Add "Add Button" button
         add_button = tk.Button(
@@ -439,6 +452,46 @@ class ImageViewer:
             self.save_window.title(f"Controls - {filename_only}")
         else:
             self.save_window.title(f"Controls - {filename_only}")
+
+    def change_image(self):
+        """Allow user to select and load a new image"""
+        # Define image file types
+        image_file_types = [
+            ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.tif"),
+            ("PNG files", "*.png"),
+            ("JPEG files", "*.jpg *.jpeg"),
+            ("GIF files", "*.gif"),
+            ("BMP files", "*.bmp"),
+            ("TIFF files", "*.tiff *.tif"),
+            ("All files", "*.*"),
+        ]
+
+        # Show file dialog to select new image
+        new_image_filename = filedialog.askopenfilename(
+            title="Select a new image file", 
+            filetypes=image_file_types
+        )
+
+        if new_image_filename:
+            try:
+                # Load the new image
+                self.load_image(new_image_filename)
+                
+                # Redraw the button models on the new image
+                self.draw_button_models()
+                
+                # Show success message
+                filename_only = os.path.basename(new_image_filename)
+                messagebox.showinfo(
+                    "Image Changed", 
+                    f"Successfully loaded new image: {filename_only}"
+                )
+                
+            except Exception as e:
+                messagebox.showerror(
+                    "Error", 
+                    f"Failed to load new image:\n{str(e)}"
+                )
 
     def add_new_button(self):
         """Add a new button circle to the canvas"""
